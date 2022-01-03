@@ -58,7 +58,7 @@ def get_case_identifier_from_npz(case):
     return case_identifier
 
 
-def load_case_from_list_of_files(data_files, seg_file=None):
+def load_case_from_list_of_files(data_files, seg_file=None, phi_file=None):
     assert isinstance(data_files, list) or isinstance(data_files, tuple), "case must be either a list or a tuple"
     properties = OrderedDict()
     data_itk = [sitk.ReadImage(f) for f in data_files]
@@ -67,6 +67,7 @@ def load_case_from_list_of_files(data_files, seg_file=None):
     properties["original_spacing"] = np.array(data_itk[0].GetSpacing())[[2, 1, 0]]
     properties["list_of_data_files"] = data_files
     properties["seg_file"] = seg_file
+    properties["phi_file"] = phi_file
 
     properties["itk_origin"] = data_itk[0].GetOrigin()
     properties["itk_spacing"] = data_itk[0].GetSpacing()
@@ -78,7 +79,15 @@ def load_case_from_list_of_files(data_files, seg_file=None):
         seg_npy = sitk.GetArrayFromImage(seg_itk)[None].astype(np.float32)
     else:
         seg_npy = None
-    return data_npy.astype(np.float32), seg_npy, properties
+
+    if phi_file is not None:
+        phi_npy = np.load(phi_file)
+        properties["phi_size"] = phi_npy.shape
+    else:
+        phi_npy = None
+        properties["phi_size"] = None
+
+    return data_npy.astype(np.float32), seg_npy, phi_npy, properties
 
 
 def crop_to_nonzero(data, seg=None, nonzero_label=-1):
@@ -136,7 +145,7 @@ class ImageCropper(object):
             maybe_mkdir_p(self.output_folder)
 
     @staticmethod
-    def crop(data, properties, seg=None):
+    def crop(data, properties, seg=None, phi=None):
         shape_before = data.shape
         data, seg, bbox = crop_to_nonzero(data, seg, nonzero_label=-1)
         shape_after = data.shape
@@ -147,12 +156,12 @@ class ImageCropper(object):
         properties['classes'] = np.unique(seg)
         seg[seg < -1] = 0
         properties["size_after_cropping"] = data[0].shape
-        return data, seg, properties
+        return data, seg, phi, properties
 
     @staticmethod
-    def crop_from_list_of_files(data_files, seg_file=None):
-        data, seg, properties = load_case_from_list_of_files(data_files, seg_file)
-        return ImageCropper.crop(data, properties, seg)
+    def crop_from_list_of_files(data_files, seg_file=None, phi_file = None):
+        data, seg, phi_npy, properties = load_case_from_list_of_files(data_files, seg_file, phi_file)
+        return ImageCropper.crop(data, properties, seg, phi_npy)
 
     def load_crop_save(self, case, case_identifier, overwrite_existing=False):
         try:
@@ -161,9 +170,9 @@ class ImageCropper(object):
                     or (not os.path.isfile(os.path.join(self.output_folder, "%s.npz" % case_identifier))
                         or not os.path.isfile(os.path.join(self.output_folder, "%s.pkl" % case_identifier))):
 
-                data, seg, properties = self.crop_from_list_of_files(case[:-1], case[-1])
+                data, seg, phi, properties = self.crop_from_list_of_files(case[:-2], case[-2], case[-1])
 
-                all_data = np.vstack((data, seg))
+                all_data = np.vstack((data, seg, phi))
                 np.savez_compressed(os.path.join(self.output_folder, "%s.npz" % case_identifier), data=all_data)
                 with open(os.path.join(self.output_folder, "%s.pkl" % case_identifier), 'wb') as f:
                     pickle.dump(properties, f)
@@ -191,10 +200,16 @@ class ImageCropper(object):
             self.output_folder = output_folder
 
         output_folder_gt = os.path.join(self.output_folder, "gt_segmentations")
+        output_folder_gt_phi = os.path.join(self.output_folder,"gt_phi")
+
         maybe_mkdir_p(output_folder_gt)
+        maybe_mkdir_p(output_folder_gt_phi)
+
         for j, case in enumerate(list_of_files):
+            if case[-2] is not None:
+                shutil.copy(case[-2], output_folder_gt)
             if case[-1] is not None:
-                shutil.copy(case[-1], output_folder_gt)
+                shutil.copy(case[-1], output_folder_gt_phi)
 
         list_of_args = []
         for j, case in enumerate(list_of_files):

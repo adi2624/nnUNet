@@ -426,6 +426,11 @@ class ExperimentPlanner(object):
             shutil.rmtree(join(self.preprocessed_output_folder, "gt_segmentations"))
         shutil.copytree(join(self.folder_with_cropped_data, "gt_segmentations"),
                         join(self.preprocessed_output_folder, "gt_segmentations"))
+        if os.path.isdir(join(self.preprocessed_output_folder, "gt_phi")):
+            shutil.rmtree(join(self.preprocessed_output_folder, "gt_phi"))
+        shutil.copytree(join(self.folder_with_cropped_data, "gt_phi"),
+                        join(self.preprocessed_output_folder, "gt_phi"))
+                        
         normalization_schemes = self.plans['normalization_schemes']
         use_nonzero_mask_for_normalization = self.plans['use_mask_for_norm']
         intensityproperties = self.plans['dataset_properties']['intensityproperties']

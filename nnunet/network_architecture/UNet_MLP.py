@@ -14,8 +14,6 @@
 
 
 from copy import deepcopy
-
-from torch.nn.modules.activation import Softmax
 from nnunet.utilities.nd_softmax import softmax_helper
 from torch import nn
 import torch
@@ -318,31 +316,6 @@ class Generic_UNet(SegmentationNetwork):
             StackedConvLayers(output_features, final_num_features, 1, self.conv_op, self.conv_kwargs,
                               self.norm_op, self.norm_op_kwargs, self.dropout_op, self.dropout_op_kwargs, self.nonlin,
                               self.nonlin_kwargs, basic_block=basic_block)))
-        self.mlp_conv = []
-        self.mlp = []
-        self.num_mlp = 2
-        self.mlp_conv.append(
-            nn.Sequential(
-                StackedConvLayers(final_num_features,final_num_features//2,1,nn.Conv3d,self.conv_kwargs,nn.BatchNorm3d,self.norm_op_kwargs,
-                self.dropout_op,self.dropout_op_kwargs,self.nonlin,self.nonlin_kwargs,basic_block=basic_block),
-                StackedConvLayers(final_num_features//2,final_num_features//4,1,nn.Conv3d,self.conv_kwargs,nn.BatchNorm3d,self.norm_op_kwargs,
-                self.dropout_op,self.dropout_op_kwargs,self.nonlin,self.nonlin_kwargs,basic_block=basic_block)
-            )
-        )
-
-        
-        num_mlp_inputs = final_num_features//4 + 134 # 134 is the length of the PHI data vector
-        num_mlp_outputs = num_mlp_inputs//2
-        final_units = 1
-
-        mlp_layer = nn.Sequential(
-            nn.Linear(num_mlp_inputs,num_mlp_outputs),
-            nn.ReLU(),
-            nn.Linear(num_mlp_outputs,final_units)
-        )
-        
-        self.mlp.append(mlp_layer)
-
 
         # if we don't want to do dropout in the localization pathway then we set the dropout prob to zero here
         if not dropout_in_localization:
@@ -403,8 +376,6 @@ class Generic_UNet(SegmentationNetwork):
         self.td = nn.ModuleList(self.td)
         self.tu = nn.ModuleList(self.tu)
         self.seg_outputs = nn.ModuleList(self.seg_outputs)
-        self.mlp_conv = nn.ModuleList(self.mlp_conv)
-        self.mlp = nn.ModuleList(self.mlp)
         if self.upscale_logits:
             self.upscale_logits_ops = nn.ModuleList(
                 self.upscale_logits_ops)  # lambda x:x is not a Module so we need to distinguish here
@@ -414,44 +385,27 @@ class Generic_UNet(SegmentationNetwork):
             # self.apply(print_module_training_status)
 
     def forward(self, x, phi):
-        log_string = f"Input shape: {x.shape}\n"
         skips = []
         seg_outputs = []
         for d in range(len(self.conv_blocks_context) - 1):
-            log_string += f"Before conv {x.shape}\n"
             x = self.conv_blocks_context[d](x)
-            log_string += f"After conv {x.shape}\n"
             skips.append(x)
             if not self.convolutional_pooling:
                 x = self.td[d](x)
-        log_string += f"Entering bottleneck\n"
-        x = self.conv_blocks_context[-1](x)
-        log_string += f"Right before Upsampling {x.shape}\n"
 
-        for layer in self.mlp_conv:
-            y = layer(x)
-        y = torch.mean(y,dim=(2,3,4),keepdim=True)
-        y = y.flatten(start_dim=1)
-        y = torch.cat((y,phi),1)
-        
-        for layer in self.mlp:
-            y = layer(y)   # Output of the MLP layer        
+        x = self.conv_blocks_context[-1](x)
 
         for u in range(len(self.tu)):
-            #log_string += f"Before Transpose Convolution {x.shape}\n"
             x = self.tu[u](x)
-            #log_string += f"After Transpose Convolution {x.shape}\n"
             x = torch.cat((x, skips[-(u + 1)]), dim=1)
-            #log_string += f"After Concat {x.shape}\n"
             x = self.conv_blocks_localization[u](x)
-            #log_string += f"After Passing through Localization {x.shape}\n"
             seg_outputs.append(self.final_nonlin(self.seg_outputs[u](x)))
 
         if self._deep_supervision and self.do_ds:
             return tuple([seg_outputs[-1]] + [i(j) for i, j in
-                                              zip(list(self.upscale_logits_ops)[::-1], seg_outputs[:-1][::-1])]), y
+                                              zip(list(self.upscale_logits_ops)[::-1], seg_outputs[:-1][::-1])])
         else:
-            return seg_outputs[-1], y
+            return seg_outputs[-1]
 
     @staticmethod
     def compute_approx_vram_consumption(patch_size, num_pool_per_axis, base_num_features, max_num_features,

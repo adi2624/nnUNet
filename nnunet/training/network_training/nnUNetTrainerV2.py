@@ -232,21 +232,32 @@ class nnUNetTrainerV2(nnUNetTrainer):
         data_dict = next(data_generator)
         data = data_dict['data']
         target = data_dict['target']
+        phi = data_dict['phi']
+        aua_risk_group = phi[:,15] # I forgot to remove the labels from the data, so indexing and deleting here
+        phi = np.delete(phi,15,axis=1)
+        #self.print_to_log_file(f"PHI: {phi}")
 
         data = maybe_to_torch(data)
         target = maybe_to_torch(target)
+        phi = maybe_to_torch(phi)
+        aua_risk_group = maybe_to_torch(aua_risk_group)
 
         if torch.cuda.is_available():
             data = to_cuda(data)
             target = to_cuda(target)
+            phi = to_cuda(phi)
+            aua_risk_group = to_cuda(aua_risk_group)
+        
+        aua_risk_group = aua_risk_group.reshape(-1,1)
 
         self.optimizer.zero_grad()
 
         if self.fp16:
             with autocast():
-                output = self.network(data)
+                output, phi_output = self.network(data, phi)
+                #self.print_to_log_file(log_string)
                 del data
-                l = self.loss(output, target)
+                l = self.loss(output, target) + nn.BCEWithLogitsLoss()(phi_output,aua_risk_group)
 
             if do_backprop:
                 self.amp_grad_scaler.scale(l).backward()
@@ -255,9 +266,9 @@ class nnUNetTrainerV2(nnUNetTrainer):
                 self.amp_grad_scaler.step(self.optimizer)
                 self.amp_grad_scaler.update()
         else:
-            output = self.network(data)
+            output, phi_output = self.network(data)
             del data
-            l = self.loss(output, target)
+            l = self.loss(output, target) + nn.BCELoss()(phi_output,aua_risk_group)
 
             if do_backprop:
                 l.backward()

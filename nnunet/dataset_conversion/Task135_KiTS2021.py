@@ -1,12 +1,14 @@
 from batchgenerators.utilities.file_and_folder_operations import *
 import shutil
-
+import pandas as pd
+import numpy as np
 from nnunet.paths import nnUNet_raw_data
 from nnunet.dataset_conversion.utils import generate_dataset_json
 
 if __name__ == '__main__':
     # this is the data folder from the kits21 github repository, see https://github.com/neheller/kits21
-    kits_data_dir = '/home/fabian/git_repos/kits21/kits21/data'
+    kits_data_dir = '/home/aditya/External_Drive/kits21/kits21/data'
+    knight_data_dir = '/home/aditya/UMN_Research/Nikos_Lab/Capstone/KNIGHT/knight/data/knight_2_labels.csv'
 
     # This script uses the majority voted segmentation as ground truth
     kits_segmentation_filename = 'aggregated_MAJ_seg.nii.gz'
@@ -20,20 +22,43 @@ if __name__ == '__main__':
 
     # setting up nnU-Net folders
     out_base = join(nnUNet_raw_data, foldername)
+    
     imagestr = join(out_base, "imagesTr")
     labelstr = join(out_base, "labelsTr")
+    
+    imagests = join(out_base, "imagesTs")
+    labelsts = join(out_base, "labelsTs")
+
+    phitr = join(out_base,"phiTr")
+    phits = join(out_base,"phiTs")
+
     maybe_mkdir_p(imagestr)
     maybe_mkdir_p(labelstr)
+    maybe_mkdir_p(imagests)
+    maybe_mkdir_p(labelsts)
+    maybe_mkdir_p(phitr)
+    maybe_mkdir_p(phits)
 
     case_ids = subdirs(kits_data_dir, prefix='case_', join=False)
-    for c in case_ids:
+    test_idx = 0.75*len(case_ids)
+
+    df = pd.read_csv(knight_data_dir)
+    df.drop(columns='Unnamed: 0',inplace=True) # Remove the extra numbering column
+
+    for idx,c in enumerate(case_ids):
         if isfile(join(kits_data_dir, c, kits_segmentation_filename)):
-            shutil.copy(join(kits_data_dir, c, kits_segmentation_filename), join(labelstr, c + '.nii.gz'))
-            shutil.copy(join(kits_data_dir, c, 'imaging.nii.gz'), join(imagestr, c + '_0000.nii.gz'))
+            if idx >= test_idx:
+                shutil.copy(join(kits_data_dir, c, kits_segmentation_filename), join(labelsts, c + '.nii.gz'))
+                shutil.copy(join(kits_data_dir, c, 'imaging.nii.gz'), join(imagests, c + '.nii.gz'))
+                np.save(join(phits, c + '.npy'),df.loc[idx].to_numpy())
+            else:
+                shutil.copy(join(kits_data_dir, c, kits_segmentation_filename), join(labelstr, c + '.nii.gz'))
+                shutil.copy(join(kits_data_dir, c, 'imaging.nii.gz'), join(imagestr, c + '.nii.gz'))
+                np.save(join(phitr, c + '.npy'),df.loc[idx].to_numpy())
 
     generate_dataset_json(join(out_base, 'dataset.json'),
                           imagestr,
-                          None,
+                          imagests,
                           ('CT',),
                           {
                               0: 'background',

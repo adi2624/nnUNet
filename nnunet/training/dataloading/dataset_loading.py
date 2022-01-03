@@ -16,10 +16,13 @@ from collections import OrderedDict
 import numpy as np
 from multiprocessing import Pool
 
+from os.path import join
+
 from batchgenerators.dataloading.data_loader import SlimDataLoaderBase
 
 from nnunet.configuration import default_num_threads
 from nnunet.paths import preprocessing_output_dir
+from nnunet.paths import nnUNet_raw_data
 from batchgenerators.utilities.file_and_folder_operations import *
 
 
@@ -95,6 +98,9 @@ def load_dataset(folder, num_cases_properties_loading_threshold=1000):
     for c in case_identifiers:
         dataset[c] = OrderedDict()
         dataset[c]['data_file'] = join(folder, "%s.npz" % c)
+
+        phi_file = join('/home/aditya/UMN_Research/Nikos_Lab/Capstone/data/nnUNet_preprocessed/Task135_KiTS2021/gt_phi',"%s.npy" % c)
+        dataset[c]['phi_file'] = phi_file
 
         # dataset[c]['properties'] = load_pickle(join(folder, "%s.pkl" % c))
         dataset[c]['properties_file'] = join(folder, "%s.pkl" % c)
@@ -199,7 +205,7 @@ class DataLoader3D(SlimDataLoaderBase):
         self.memmap_mode = memmap_mode
         self.num_channels = None
         self.pad_sides = pad_sides
-        self.data_shape, self.seg_shape = self.determine_shapes()
+        self.data_shape, self.seg_shape, self.phi_shape = self.determine_shapes()
 
     def get_do_oversample(self, batch_idx):
         return not batch_idx < round(self.batch_size * (1 - self.oversample_foreground_percent))
@@ -218,12 +224,14 @@ class DataLoader3D(SlimDataLoaderBase):
         num_color_channels = case_all_data.shape[0] - 1
         data_shape = (self.batch_size, num_color_channels, *self.patch_size)
         seg_shape = (self.batch_size, num_seg, *self.patch_size)
-        return data_shape, seg_shape
+        phi_shape = (self.batch_size,135)
+        return data_shape, seg_shape, phi_shape
 
     def generate_train_batch(self):
         selected_keys = np.random.choice(self.list_of_keys, self.batch_size, True, None)
         data = np.zeros(self.data_shape, dtype=np.float32)
         seg = np.zeros(self.seg_shape, dtype=np.float32)
+        phi = np.zeros(self.phi_shape,dtype=np.float32)
         case_properties = []
         for j, i in enumerate(selected_keys):
             # oversampling foreground will improve stability of model training, especially if many patches are empty
@@ -376,7 +384,9 @@ class DataLoader3D(SlimDataLoaderBase):
                                                               max(bbox_z_ub - shape[2], 0))),
                                    'constant', **{'constant_values': 0})
 
-        return {'data': data, 'seg': seg, 'properties': case_properties, 'keys': selected_keys}
+            phi[j] = np.load(self._data[i]['phi_file'])
+
+        return {'data': data, 'seg': seg, 'phi': phi, 'properties': case_properties, 'keys': selected_keys}
 
 
 class DataLoader2D(SlimDataLoaderBase):
