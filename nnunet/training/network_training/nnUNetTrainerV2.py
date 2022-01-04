@@ -197,7 +197,7 @@ class nnUNetTrainerV2(nnUNetTrainer):
         self.network.do_ds = ds
         return ret
 
-    def predict_preprocessed_data_return_seg_and_softmax(self, data: np.ndarray, do_mirroring: bool = True,
+    def predict_preprocessed_data_return_seg_and_softmax(self, data: np.ndarray, phi_array: np.ndarray, do_mirroring: bool = True,
                                                          mirror_axes: Tuple[int] = None,
                                                          use_sliding_window: bool = True, step_size: float = 0.5,
                                                          use_gaussian: bool = True, pad_border_mode: str = 'constant',
@@ -208,7 +208,7 @@ class nnUNetTrainerV2(nnUNetTrainer):
         """
         ds = self.network.do_ds
         self.network.do_ds = False
-        ret = super().predict_preprocessed_data_return_seg_and_softmax(data,
+        ret = super().predict_preprocessed_data_return_seg_and_softmax(data,phi_array,
                                                                        do_mirroring=do_mirroring,
                                                                        mirror_axes=mirror_axes,
                                                                        use_sliding_window=use_sliding_window,

@@ -41,6 +41,7 @@ from nnunet.training.loss_functions.dice_loss import DC_and_CE_loss
 from nnunet.training.network_training.network_trainer import NetworkTrainer
 from nnunet.utilities.nd_softmax import softmax_helper
 from nnunet.utilities.tensor_utilities import sum_tensor
+from nnunet.utilities.to_torch import to_cuda, maybe_to_torch
 
 matplotlib.use("agg")
 
@@ -455,7 +456,7 @@ class nnUNetTrainer(NetworkTrainer):
         print("preprocessing...")
         d, s, properties = self.preprocess_patient(input_files)
         print("predicting...")
-        pred = self.predict_preprocessed_data_return_seg_and_softmax(d, do_mirroring=self.data_aug_params["do_mirror"],
+        pred = self.predict_preprocessed_data_return_seg_and_softmax(d, phi_array = None, do_mirroring=self.data_aug_params["do_mirror"],
                                                                      mirror_axes=self.data_aug_params['mirror_axes'],
                                                                      use_sliding_window=True, step_size=0.5,
                                                                      use_gaussian=True, pad_border_mode='constant',
@@ -480,7 +481,7 @@ class nnUNetTrainer(NetworkTrainer):
                                              interpolation_order_z=interpolation_order_z)
         print("done")
 
-    def predict_preprocessed_data_return_seg_and_softmax(self, data: np.ndarray, do_mirroring: bool = True,
+    def predict_preprocessed_data_return_seg_and_softmax(self, data: np.ndarray, phi_array: np.ndarray, do_mirroring: bool = True,
                                                          mirror_axes: Tuple[int] = None,
                                                          use_sliding_window: bool = True, step_size: float = 0.5,
                                                          use_gaussian: bool = True, pad_border_mode: str = 'constant',
@@ -514,7 +515,7 @@ class nnUNetTrainer(NetworkTrainer):
 
         current_mode = self.network.training
         self.network.eval()
-        ret = self.network.predict_3D(data, do_mirroring=do_mirroring, mirror_axes=mirror_axes,
+        ret = self.network.predict_3D(data, phi_array, do_mirroring=do_mirroring, mirror_axes=mirror_axes,
                                       use_sliding_window=use_sliding_window, step_size=step_size,
                                       patch_size=self.patch_size, regions_class_order=self.regions_class_order,
                                       use_gaussian=use_gaussian, pad_border_mode=pad_border_mode,
@@ -588,19 +589,26 @@ class nnUNetTrainer(NetworkTrainer):
             if overwrite or (not isfile(join(output_folder, fname + ".nii.gz"))) or \
                     (save_softmax and not isfile(join(output_folder, fname + ".npz"))):
                 data = np.load(self.dataset[k]['data_file'])['data']
-
+                phi_file = join('/home/aditya/UMN_Research/Nikos_Lab/Capstone/data/nnUNet_preprocessed/Task135_KiTS2021/gt_phi',"%s.npy" % fname)
+                phi_array = np.load(phi_file)
+                aua_risk_group_label = phi_array[15]
+                phi_array = np.delete(phi_array,15,axis=0).reshape(1,-1)
+                phi_array = to_cuda(maybe_to_torch(phi_array))
+                print(f"Filename: {fname}")
                 print(k, data.shape)
                 data[-1][data[-1] == -1] = 0
 
-                softmax_pred = self.predict_preprocessed_data_return_seg_and_softmax(data[:-1],
+                _ ,softmax_pred, risk = self.predict_preprocessed_data_return_seg_and_softmax(data[:-1], phi_array=phi_array,
                                                                                      do_mirroring=do_mirroring,
                                                                                      mirror_axes=mirror_axes,
                                                                                      use_sliding_window=use_sliding_window,
                                                                                      step_size=step_size,
                                                                                      use_gaussian=use_gaussian,
                                                                                      all_in_gpu=all_in_gpu,
-                                                                                     mixed_precision=self.fp16)[1]
-
+                                                                                     mixed_precision=self.fp16)
+                #print(f"Softmax Pred: {softmax_pred.shape}, {softmax_pred[-1]}")
+                print(f"Label: {aua_risk_group_label}, Prediction: {nn.Sigmoid()(risk)}")
+                softmax_pred = softmax_pred[:-1]
                 softmax_pred = softmax_pred.transpose([0] + [i + 1 for i in self.transpose_backward])
 
                 if save_softmax:

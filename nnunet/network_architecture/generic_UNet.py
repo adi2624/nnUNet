@@ -432,6 +432,7 @@ class Generic_UNet(SegmentationNetwork):
             y = layer(x)
         y = torch.mean(y,dim=(2,3,4),keepdim=True)
         y = y.flatten(start_dim=1)
+        #print(f"HERE:: {y.shape},{phi.shape}")
         y = torch.cat((y,phi),1)
         
         for layer in self.mlp:
