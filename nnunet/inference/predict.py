@@ -215,11 +215,11 @@ def predict_cases(model, list_of_lists, output_filenames, folds, save_npz, num_t
         print("predicting", output_filename)
         trainer.load_checkpoint_ram(params[0], False)
         load_filename = output_filename.split('/')[-1][:-7]
-        phi_X_array = np.load(join(phi_dir_base,f"{load_filename}_X.npy"))
-        phi_y_array = np.load(join(phi_dir_base,f"{load_filename}_y.npy"))
+        phi_X_array = np.load(join(phi_dir_base,f"{load_filename}_X.npy")).reshape(1,-1)
+        phi_y_array = np.load(join(phi_dir_base,f"{load_filename}_y.npy")).reshape(1,-1)
         d = to_cuda(maybe_to_torch(d))
         phi_X_array = to_cuda(maybe_to_torch(phi_X_array))
-        label_phi = phi_y_array[6]
+        label_phi = phi_y_array[0][6]
         print("DEVICE!!!!",type(d),type(phi_X_array))
         prediction_results = trainer.predict_preprocessed_data_return_seg_and_softmax(
             d, phi_X_array,do_mirroring=do_tta, mirror_axes=trainer.data_aug_params['mirror_axes'], use_sliding_window=True,
