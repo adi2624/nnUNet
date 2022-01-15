@@ -331,7 +331,7 @@ class Generic_UNet(SegmentationNetwork):
         )
 
         
-        num_mlp_inputs = final_num_features//4 + 134 # 134 is the length of the PHI data vector
+        num_mlp_inputs = final_num_features//4 + 60 # 134 is the length of the PHI data vector
         num_mlp_outputs = num_mlp_inputs//2
         final_units = 1
 

@@ -218,10 +218,9 @@ class GenericPreprocessor(object):
         all_data = np.load(os.path.join(cropped_output_dir, "%s.npz" % case_identifier))['data']
         data = all_data[:-2].astype(np.float32)
         seg = all_data[-2]
-        phi = all_data[-1]
         with open(os.path.join(cropped_output_dir, "%s.pkl" % case_identifier), 'rb') as f:
             properties = pickle.load(f)
-        return data, seg, phi, properties
+        return data, seg, properties
 
     def resample_and_normalize(self, data, target_spacing, properties, seg=None, force_separate_z=None):
         """
@@ -310,7 +309,6 @@ class GenericPreprocessor(object):
 
     def preprocess_test_case(self, data_files, target_spacing, seg_file=None, force_separate_z=None):
         data, seg, properties = ImageCropper.crop_from_list_of_files(data_files, seg_file)
-
         data = data.transpose((0, *[i + 1 for i in self.transpose_forward]))
         seg = seg.transpose((0, *[i + 1 for i in self.transpose_forward]))
 
@@ -320,7 +318,7 @@ class GenericPreprocessor(object):
 
     def _run_internal(self, target_spacing, case_identifier, output_folder_stage, cropped_output_dir, force_separate_z,
                       all_classes):
-        data, seg, phi, properties = self.load_cropped(cropped_output_dir, case_identifier)
+        data, seg, properties = self.load_cropped(cropped_output_dir, case_identifier)
 
         data = data.transpose((0, *[i + 1 for i in self.transpose_forward]))
         seg = seg.transpose((0, *[i + 1 for i in self.transpose_forward]))
@@ -328,7 +326,7 @@ class GenericPreprocessor(object):
         data, seg, properties = self.resample_and_normalize(data, target_spacing,
                                                             properties, seg, force_separate_z)
 
-        all_data = np.vstack((data, seg, phi)).astype(np.float32)
+        all_data = np.vstack((data, seg)).astype(np.float32)
 
         # we need to find out where the classes are and sample some random locations
         # let's do 10.000 samples per class

@@ -30,7 +30,8 @@ from nnunet.postprocessing.connected_components import load_remove_save, load_po
 from nnunet.training.model_restore import load_model_and_checkpoint_files
 from nnunet.training.network_training.nnUNetTrainer import nnUNetTrainer
 from nnunet.utilities.one_hot_encoding import to_one_hot
-
+from nnunet.utilities.to_torch import maybe_to_torch, to_cuda
+from nnunet.paths import phi_dir_base
 
 def preprocess_save_to_queue(preprocess_fn, q, list_of_lists, output_files, segs_from_prev_stage, classes,
                              transpose_forward):
@@ -213,15 +214,26 @@ def predict_cases(model, list_of_lists, output_filenames, folds, save_npz, num_t
 
         print("predicting", output_filename)
         trainer.load_checkpoint_ram(params[0], False)
-        softmax = trainer.predict_preprocessed_data_return_seg_and_softmax(
-            d, do_mirroring=do_tta, mirror_axes=trainer.data_aug_params['mirror_axes'], use_sliding_window=True,
+        load_filename = output_filename.split('/')[-1][:-7]
+        phi_X_array = np.load(join(phi_dir_base,f"{load_filename}_X.npy"))
+        phi_y_array = np.load(join(phi_dir_base,f"{load_filename}_y.npy"))
+        d = to_cuda(maybe_to_torch(d))
+        phi_X_array = to_cuda(maybe_to_torch(phi_X_array))
+        label_phi = phi_y_array[6]
+        print("DEVICE!!!!",type(d),type(phi_X_array))
+        prediction_results = trainer.predict_preprocessed_data_return_seg_and_softmax(
+            d, phi_X_array,do_mirroring=do_tta, mirror_axes=trainer.data_aug_params['mirror_axes'], use_sliding_window=True,
             step_size=step_size, use_gaussian=True, all_in_gpu=all_in_gpu,
-            mixed_precision=mixed_precision)[1]
+            mixed_precision=mixed_precision)
+        risk = prediction_results[2].detach().cpu().numpy()
+        np.save(output_filename[:-7] + "_risk.npy",risk)
+        np.save(output_filename[:-7] + "_label_phi.npy",label_phi)
 
+        softmax = prediction_results[1]
         for p in params[1:]:
             trainer.load_checkpoint_ram(p, False)
             softmax += trainer.predict_preprocessed_data_return_seg_and_softmax(
-                d, do_mirroring=do_tta, mirror_axes=trainer.data_aug_params['mirror_axes'], use_sliding_window=True,
+                d, phi_X_array, do_mirroring=do_tta, mirror_axes=trainer.data_aug_params['mirror_axes'], use_sliding_window=True,
                 step_size=step_size, use_gaussian=True, all_in_gpu=all_in_gpu,
                 mixed_precision=mixed_precision)[1]
 

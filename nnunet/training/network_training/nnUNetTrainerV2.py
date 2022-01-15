@@ -232,20 +232,22 @@ class nnUNetTrainerV2(nnUNetTrainer):
         data_dict = next(data_generator)
         data = data_dict['data']
         target = data_dict['target']
-        phi = data_dict['phi']
-        aua_risk_group = phi[:,15] # I forgot to remove the labels from the data, so indexing and deleting here
-        phi = np.delete(phi,15,axis=1)
+        phi_X = data_dict['phi_X']
+        phi_y = data_dict['phi_y']
+        aua_risk_group = phi_y[:,-2] # I forgot to remove the labels from the data, so indexing and deleting here
         #self.print_to_log_file(f"PHI: {phi}")
 
         data = maybe_to_torch(data)
         target = maybe_to_torch(target)
-        phi = maybe_to_torch(phi)
+        phi_X = maybe_to_torch(phi_X)
+        phi_y = maybe_to_torch(phi_y)
         aua_risk_group = maybe_to_torch(aua_risk_group)
 
         if torch.cuda.is_available():
             data = to_cuda(data)
             target = to_cuda(target)
-            phi = to_cuda(phi)
+            phi_X = to_cuda(phi_X)
+            phi_y = to_cuda(phi_y)
             aua_risk_group = to_cuda(aua_risk_group)
         
         aua_risk_group = aua_risk_group.reshape(-1,1)
@@ -254,7 +256,7 @@ class nnUNetTrainerV2(nnUNetTrainer):
 
         if self.fp16:
             with autocast():
-                output, phi_output = self.network(data, phi)
+                output, phi_output = self.network(data, phi_X)
                 #self.print_to_log_file(log_string)
                 del data
                 l = self.loss(output, target) + nn.BCEWithLogitsLoss()(phi_output,aua_risk_group)

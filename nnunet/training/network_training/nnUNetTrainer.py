@@ -27,6 +27,7 @@ from torch import nn
 from torch.optim import lr_scheduler
 
 import nnunet
+from nnunet.paths import phi_dir_base
 from nnunet.configuration import default_num_threads
 from nnunet.evaluation.evaluator import aggregate_scores
 from nnunet.inference.segmentation_export import save_segmentation_nifti_from_softmax
@@ -582,23 +583,25 @@ class nnUNetTrainer(NetworkTrainer):
 
         export_pool = Pool(default_num_threads)
         results = []
-
+        correct = 0
+        total = 0
         for k in self.dataset_val.keys():
             properties = load_pickle(self.dataset[k]['properties_file'])
             fname = properties['list_of_data_files'][0].split("/")[-1][:-12]
             if overwrite or (not isfile(join(output_folder, fname + ".nii.gz"))) or \
                     (save_softmax and not isfile(join(output_folder, fname + ".npz"))):
                 data = np.load(self.dataset[k]['data_file'])['data']
-                phi_file = join('/home/aditya/UMN_Research/Nikos_Lab/Capstone/data/nnUNet_preprocessed/Task135_KiTS2021/gt_phi',"%s.npy" % fname)
-                phi_array = np.load(phi_file)
-                aua_risk_group_label = phi_array[15]
-                phi_array = np.delete(phi_array,15,axis=0).reshape(1,-1)
-                phi_array = to_cuda(maybe_to_torch(phi_array))
+                phi_X_file = join(phi_dir_base,"%s_X.npy" % fname)
+                phi_y_file = join(phi_dir_base,"%s_y.npy" % fname)
+                phi_X_array = np.load(phi_X_file).reshape(1,-1)
+                phi_y_array = np.load(phi_y_file)
+                aua_risk_group_label = phi_y_array[-2]
+                phi_X_array = to_cuda(maybe_to_torch(phi_X_array))
                 print(f"Filename: {fname}")
                 print(k, data.shape)
                 data[-1][data[-1] == -1] = 0
 
-                _ ,softmax_pred, risk = self.predict_preprocessed_data_return_seg_and_softmax(data[:-1], phi_array=phi_array,
+                _ ,softmax_pred, risk = self.predict_preprocessed_data_return_seg_and_softmax(data[:-1], phi_array=phi_X_array,
                                                                                      do_mirroring=do_mirroring,
                                                                                      mirror_axes=mirror_axes,
                                                                                      use_sliding_window=use_sliding_window,
