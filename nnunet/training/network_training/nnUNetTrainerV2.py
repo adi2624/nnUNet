@@ -18,6 +18,7 @@ from typing import Tuple
 
 import numpy as np
 import torch
+import torch.nn as nn
 from nnunet.training.data_augmentation.data_augmentation_moreDA import get_moreDA_augmentation
 from nnunet.training.loss_functions.deep_supervision import MultipleOutputLoss2
 from nnunet.utilities.to_torch import maybe_to_torch, to_cuda
@@ -259,7 +260,10 @@ class nnUNetTrainerV2(nnUNetTrainer):
                 output, phi_output = self.network(data, phi_X)
                 #self.print_to_log_file(log_string)
                 del data
-                l = self.loss(output, target) + nn.BCEWithLogitsLoss()(phi_output,aua_risk_group)
+                bc_dice_loss = self.loss(output,target)
+                mlp_loss = nn.BCEWithLogitsLoss()(phi_output,aua_risk_group)
+                self.print_to_log_file(f"BC & DICE LOSS: {bc_dice_loss} MLP LOSS: {mlp_loss}")
+                l = bc_dice_loss + mlp_loss
 
             if do_backprop:
                 self.amp_grad_scaler.scale(l).backward()
@@ -270,7 +274,7 @@ class nnUNetTrainerV2(nnUNetTrainer):
         else:
             output, phi_output = self.network(data)
             del data
-            l = self.loss(output, target) + nn.BCELoss()(phi_output,aua_risk_group)
+            l = self.loss(output, target) + nn.BCEWithLogitsLoss()(phi_output,aua_risk_group)
 
             if do_backprop:
                 l.backward()
@@ -278,6 +282,7 @@ class nnUNetTrainerV2(nnUNetTrainer):
                 self.optimizer.step()
 
         if run_online_evaluation:
+            self.print_to_log_file(f"Original Label: {aua_risk_group}, Predicted Label: {nn.Sigmoid()(phi_output)}")
             self.run_online_evaluation(output, target)
 
         del target
