@@ -331,14 +331,29 @@ class Generic_UNet(SegmentationNetwork):
         )
 
         
-        num_mlp_inputs = final_num_features//4 + 60 # 134 is the length of the PHI data vector
-        num_mlp_outputs = num_mlp_inputs//2
+        num_mlp_inputs = final_num_features//4 + 7 # 60 is the length of the PHI data vector
+        num_mlp_layer2 = num_mlp_inputs*2
+        num_mlp_layer3 = num_mlp_layer2
+        num_mlp_layer4 = num_mlp_layer3//2
+        num_mlp_layer5 = num_mlp_layer4//2
+        num_mlp_outputs = num_mlp_layer5//2
         final_units = 1
 
         mlp_layer = nn.Sequential(
-            nn.Linear(num_mlp_inputs,num_mlp_outputs),
-            nn.ReLU(),
-            nn.Linear(num_mlp_outputs,final_units)
+            nn.Linear(num_mlp_inputs,final_units)
+            #nn.Linear(num_mlp_inputs,num_mlp_layer2),
+            #nn.ReLU(),
+            #nn.Linear(num_mlp_layer2,num_mlp_layer3),
+            #nn.Dropout(),
+            #nn.ReLU(),
+            #nn.Linear(num_mlp_layer3,num_mlp_layer4),
+            #nn.ReLU(),
+            #nn.Linear(num_mlp_layer4,num_mlp_layer5),
+            #nn.Dropout(),
+            #nn.ReLU(),
+            #nn.Linear(num_mlp_layer5,num_mlp_outputs),
+            #nn.ReLU(),
+            #nn.Linear(num_mlp_outputs,final_units)
         )
         
         self.mlp.append(mlp_layer)
@@ -436,7 +451,9 @@ class Generic_UNet(SegmentationNetwork):
         y = torch.cat((y,phi),1)
         
         for layer in self.mlp:
-            y = layer(y)   # Output of the MLP layer        
+            y = layer(y)   # Output of the MLP layer
+
+        #print(f"PHI: {y}, Sig: {nn.Sigmoid()(y)}")        
 
         for u in range(len(self.tu)):
             #log_string += f"Before Transpose Convolution {x.shape}\n"

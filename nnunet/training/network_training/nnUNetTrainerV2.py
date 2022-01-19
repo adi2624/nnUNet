@@ -233,9 +233,9 @@ class nnUNetTrainerV2(nnUNetTrainer):
         data_dict = next(data_generator)
         data = data_dict['data']
         target = data_dict['target']
-        phi_X = data_dict['phi_X']
+        phi_X = data_dict['phi_X'][:,:7]
         phi_y = data_dict['phi_y']
-        aua_risk_group = phi_y[:,-2] # I forgot to remove the labels from the data, so indexing and deleting here
+        aua_risk_group = phi_y[:,-18] # I forgot to remove the labels from the data, so indexing and deleting here
         #self.print_to_log_file(f"PHI: {phi}")
 
         data = maybe_to_torch(data)
@@ -262,7 +262,6 @@ class nnUNetTrainerV2(nnUNetTrainer):
                 del data
                 bc_dice_loss = self.loss(output,target)
                 mlp_loss = nn.BCEWithLogitsLoss()(phi_output,aua_risk_group)
-                self.print_to_log_file(f"BC & DICE LOSS: {bc_dice_loss} MLP LOSS: {mlp_loss}")
                 l = bc_dice_loss + mlp_loss
 
             if do_backprop:
@@ -274,7 +273,9 @@ class nnUNetTrainerV2(nnUNetTrainer):
         else:
             output, phi_output = self.network(data)
             del data
-            l = self.loss(output, target) + nn.BCEWithLogitsLoss()(phi_output,aua_risk_group)
+            bc_dice_loss = self.loss(output,target)
+            mlp_loss = nn.BCEWithLogitsLoss()(phi_output,aua_risk_group)
+            l = bc_dice_loss + mlp_loss
 
             if do_backprop:
                 l.backward()
@@ -282,12 +283,13 @@ class nnUNetTrainerV2(nnUNetTrainer):
                 self.optimizer.step()
 
         if run_online_evaluation:
+            #print(f"Target: {phi_X}")
             self.print_to_log_file(f"Original Label: {aua_risk_group}, Predicted Label: {nn.Sigmoid()(phi_output)}")
             self.run_online_evaluation(output, target)
 
         del target
 
-        return l.detach().cpu().numpy()
+        return l.detach().cpu().numpy(), bc_dice_loss.detach().cpu().numpy(), mlp_loss.detach().cpu().numpy()
 
     def do_split(self):
         """

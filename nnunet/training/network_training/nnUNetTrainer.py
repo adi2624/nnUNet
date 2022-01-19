@@ -610,7 +610,7 @@ class nnUNetTrainer(NetworkTrainer):
                                                                                      all_in_gpu=all_in_gpu,
                                                                                      mixed_precision=self.fp16)
                 #print(f"Softmax Pred: {softmax_pred.shape}, {softmax_pred[-1]}")
-                print(f"Label: {aua_risk_group_label}, Prediction: {nn.Sigmoid()(risk)}")
+                print(f"Label Validation: {aua_risk_group_label}, Prediction Validation: {nn.Sigmoid()(risk)}")
                 softmax_pred = softmax_pred[:-1]
                 softmax_pred = softmax_pred.transpose([0] + [i + 1 for i in self.transpose_backward])
 

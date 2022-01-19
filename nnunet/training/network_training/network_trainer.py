@@ -23,6 +23,7 @@ from sklearn.model_selection import KFold
 from torch import nn
 from torch.cuda.amp import GradScaler, autocast
 from torch.optim.lr_scheduler import _LRScheduler
+from torch.utils.tensorboard import SummaryWriter
 
 matplotlib.use("agg")
 from time import time, sleep
@@ -114,6 +115,11 @@ class NetworkTrainer(object):
         self.log_file = None
         self.deterministic = deterministic
 
+        self.all_tr_dice_losses = []
+        self.all_tr_mlp_losses = []
+        self.all_val_dice_losses = []
+        self.all_val_mlp_losses = []
+
         self.use_progress_bar = False
         if 'nnunet_use_progress_bar' in os.environ.keys():
             self.use_progress_bar = bool(int(os.environ['nnunet_use_progress_bar']))
@@ -125,6 +131,9 @@ class NetworkTrainer(object):
         self.save_intermediate_checkpoints = True  # whether or not to save checkpoint_latest
         self.save_best_checkpoint = True  # whether or not to save the best checkpoint according to self.best_val_eval_criterion_MA
         self.save_final_checkpoint = True  # whether or not to save the final checkpoint
+
+        ################### Initialize the Tensorboard Object ###############################
+        self.writer = SummaryWriter('runs/nnUNet_KNIGHT')
 
     @abstractmethod
     def initialize(self, training=True):
@@ -438,6 +447,8 @@ class NetworkTrainer(object):
             self.print_to_log_file("\nepoch: ", self.epoch)
             epoch_start_time = time()
             train_losses_epoch = []
+            dice_loss_epoch = []
+            mlp_loss_epoch = []
 
             # train one epoch
             self.network.train()
@@ -447,37 +458,77 @@ class NetworkTrainer(object):
                     for b in tbar:
                         tbar.set_description("Epoch {}/{}".format(self.epoch+1, self.max_num_epochs))
 
-                        l = self.run_iteration(self.tr_gen, True)
-
+                        l, dice_loss, mlp_loss = self.run_iteration(self.tr_gen, True)
                         tbar.set_postfix(loss=l)
                         train_losses_epoch.append(l)
+                        dice_loss_epoch.append(dice_loss)
+                        mlp_loss_epoch.append(mlp_loss)
             else:
                 for _ in range(self.num_batches_per_epoch):
-                    l = self.run_iteration(self.tr_gen, True)
+                    l,dice_loss,mlp_loss = self.run_iteration(self.tr_gen, True)
                     train_losses_epoch.append(l)
+                    dice_loss_epoch.append(dice_loss)
+                    mlp_loss_epoch.append(mlp_loss)
+
 
             self.all_tr_losses.append(np.mean(train_losses_epoch))
+            self.all_tr_dice_losses.append(np.mean(dice_loss_epoch))
+            self.all_tr_mlp_losses.append(np.mean(mlp_loss_epoch))
             self.print_to_log_file("train loss : %.4f" % self.all_tr_losses[-1])
+            self.print_to_log_file("train DICE loss : %.4f" % self.all_tr_dice_losses[-1])
+            self.print_to_log_file("train MLP loss : %.4f" % self.all_tr_mlp_losses[-1])
+
+            self.writer.add_scalar("Train Loss", self.all_tr_losses[-1],self.epoch)
+            self.writer.add_scalar("Train Dice Loss", self.all_tr_dice_losses[-1],self.epoch)
+            self.writer.add_scalar("Train MLP Loss", self.all_tr_mlp_losses[-1],self.epoch)
 
             with torch.no_grad():
                 # validation with train=False
                 self.network.eval()
                 val_losses = []
+                val_dice_loss_epoch = []
+                val_mlp_loss_epoch = []
                 for b in range(self.num_val_batches_per_epoch):
-                    l = self.run_iteration(self.val_gen, False, True)
+                    l, dice_loss, mlp_loss = self.run_iteration(self.val_gen, False, True)
                     val_losses.append(l)
+                    val_dice_loss_epoch.append(dice_loss)
+                    val_mlp_loss_epoch.append(mlp_loss)
                 self.all_val_losses.append(np.mean(val_losses))
+                self.all_val_dice_losses.append(np.mean(val_dice_loss_epoch))
+                self.all_val_mlp_losses.append(np.mean(val_mlp_loss_epoch))
                 self.print_to_log_file("validation loss: %.4f" % self.all_val_losses[-1])
+                self.print_to_log_file("validation DICE loss: %.4f" % self.all_val_dice_losses[-1])
+                self.print_to_log_file("validation MLP loss: %.4f" % self.all_val_mlp_losses[-1])
+
+                self.writer.add_scalar("Validation Loss", self.all_val_losses[-1],self.epoch)
+                self.writer.add_scalar("Validation Dice Loss", self.all_val_dice_losses[-1],self.epoch)
+                self.writer.add_scalar("Validation MLP Loss", self.all_val_mlp_losses[-1],self.epoch)
+
+
 
                 if self.also_val_in_tr_mode:
                     self.network.train()
                     # validation with train=True
                     val_losses = []
+                    val_dice_loss_epoch = []
+                    val_mlp_loss_epoch = []
                     for b in range(self.num_val_batches_per_epoch):
                         l = self.run_iteration(self.val_gen, False)
                         val_losses.append(l)
+                        val_dice_loss_epoch.append(dice_loss)
+                        val_mlp_loss_epoch.append(mlp_loss)
                     self.all_val_losses_tr_mode.append(np.mean(val_losses))
+                    self.all_val_dice_losses.append(np.mean(val_dice_loss_epoch))
+                    self.all_val_mlp_losses.append(np.mean(val_mlp_loss_epoch))
                     self.print_to_log_file("validation loss (train=True): %.4f" % self.all_val_losses_tr_mode[-1])
+                    self.print_to_log_file("validation DICE loss: %.4f" % self.all_val_dice_losses[-1])
+                    self.print_to_log_file("validation MLP loss: %.4f" % self.all_val_mlp_losses[-1])
+
+                    self.writer.add_scalar("Validation Loss", self.all_val_losses_tr_mode[-1],self.epoch)
+                    self.writer.add_scalar("Validation Dice Loss", self.all_val_dice_losses[-1],self.epoch)
+                    self.writer.add_scalar("Validation MLP Loss", self.all_val_mlp_losses[-1],self.epoch)
+
+
 
             self.update_train_loss_MA()  # needed for lr scheduler and stopping of training
 
